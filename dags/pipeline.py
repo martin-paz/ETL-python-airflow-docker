@@ -7,7 +7,11 @@ import os
 import psycopg2
 from airflow import DAG
 from sqlalchemy import create_engine
+from email import message
+from airflow.models import DAG, Variable
 from airflow.operators.python_operator import PythonOperator
+import smtplib
+
 
 dag_path = os.getcwd()     #path original.. home en Docker
 
@@ -26,21 +30,20 @@ redshift_conn= {
     'pwd':pwd
 }
 
-# argumentos por defecto para el DAG
-default_args = {
-    'owner': 'MartinPaz',
-    'start_date': datetime(2023,6,16),
-    'retries':5,
-    'retry_delay': timedelta(minutes=5)
-}
 
-nasa_asteroid = DAG(
-    dag_id='Asteroid_NeoWs',
-    default_args=default_args,
-    description='Agrega datos de la nasa sobre asteroides ',
-    schedule_interval="@daily",
-    catchup=False
-)
+def enviar():
+    try:
+        x=smtplib.SMTP('smtp.gmail.com',587)
+        x.starttls()
+        x.login('pazmartinexe@gmail.com','afjiavoqdesmnxfg')
+        subject='Ingesta exitosa'
+        body_text='Se a finalizado el proceso exitosamente!'
+        message='Subject: {}\n\n{}'.format(subject,body_text)
+        x.sendmail('pazmartinexe@gmail.com','markdekano@gmail.com',message)
+        print('Exito')
+    except Exception as exception:
+        print(exception)
+        print('Failure')
 
 # funcion de extraccion de datos
 #EXTRACT
@@ -136,6 +139,23 @@ def load():
         #cur.close()
         #print('Successfully Completed')
 
+
+# argumentos por defecto para el DAG
+default_args = {
+    'owner': 'MartinPaz',
+    'start_date': datetime(2023,7,12),
+    'retries':5,
+    'retry_delay': timedelta(minutes=5)
+}
+
+nasa_asteroid = DAG(
+    dag_id='Asteroid_NeoWs',
+    default_args=default_args,
+    description='Agrega datos de la nasa sobre asteroides ',
+    schedule_interval="@daily",
+    catchup=False
+)
+
 # Tareas
 ##1. Extraccion
 task_1 = PythonOperator(
@@ -159,4 +179,11 @@ task_3 = PythonOperator(
     dag=nasa_asteroid,
 )
 
-task_1 >> task_2 >> task_3
+#4 Enviar correo
+send = PythonOperator(
+    task_id='Envio_mail_carga_exitosa',
+    python_callable=enviar
+)
+
+
+task_1 >> task_2 >> task_3 >> send
